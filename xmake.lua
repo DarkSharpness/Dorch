@@ -1,10 +1,20 @@
 add_rules("mode.debug", "mode.release")
 
+local warnings = {"-Wall", "-Wextra", "-Werror", "-Wpedantic"}
+
 target("shared")
     set_kind("binary")
     add_includedirs("include")
     set_languages("c++23")
+    add_cxflags(table.unpack(warnings))
     add_files("src/shared/*.cpp")
+
+target("basic")
+    set_kind("binary")
+    add_includedirs("include")
+    set_languages("c++23")
+    add_cxflags(table.unpack(warnings))
+    add_files("src/basic/*.cpp")
 
 --
 -- If you want to known more usage about xmake, please see https://xmake.io

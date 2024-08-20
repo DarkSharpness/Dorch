@@ -1,6 +1,6 @@
 #pragma once
-
 #include <memory>
+
 namespace dark {
 
 namespace detail {
@@ -77,6 +77,6 @@ public:
 
 private:
     _Tp *_M_pointer;
-}; // struct shared_ptr
+};
 
 } // namespace dark
