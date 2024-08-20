@@ -1,37 +1,121 @@
 #pragma once
 #include "basic/array.h"
-#include "data_type.h"
-#include "device.h"
-#include "storage.h"
+#include "basic/data_type.h"
+#include "basic/device.h"
+#include "basic/shared.h"
+#include "basic/storage.h"
 #include <cstddef>
+#include <functional>
 #include <memory>
 
 namespace dark {
 
-struct TensorBase;
+namespace detail {
+    struct counter_tensor;
+    struct default_tensor;
+} // namespace detail
+
+struct TensorView;
 
 struct Tensor;
 
-struct TensorBase {
-    Storage_View    storage;
-    DataType        dtype;
-    Device          device;
+struct TensorView {
+private:
+    friend struct detail::counter_tensor;
+    friend struct detail::default_tensor;
+    friend struct Tensor;
 
-    // Shape of the tensor
-    IntArray        size;
-    IntArray        stride;
+public:
+    explicit TensorView(
+        const StorageView &storage,
+        IntArray size,
+        IntArray stride,
+        Device device,
+        DataType data_type)
+        : _M_storage(storage),
+          _M_size(std::move(size)),
+          _M_stride(std::move(stride)),
+          _M_device(device),
+          _M_data_type(data_type) {}
 
-    std::function<void(Tensor)> grad_fn;
+    auto get_stride() -> IntArrayView {
+        return this->_M_stride;
+    }
 
-    bool requires_grad  : 1;
-    bool is_leaf        : 1;
+    auto get_size() -> IntArrayView {
+        return this->_M_size;
+    }
+
+    auto get_device() -> Device {
+        return this->_M_device;
+    }
+
+    auto get_data_type() -> DataType {
+        return this->_M_data_type;
+    }
 
 private:
-    friend struct Tensor;
-    std::size_t ref_count;
+    StorageView _M_storage;
+
+    IntArray    _M_size;
+    IntArray    _M_stride;
+
+    Device      _M_device;
+    DataType    _M_data_type;
+
+    std::size_t _M_ref_count;
 };
 
-struct Tensor : private std::shared_ptr<TensorBase> {
+namespace detail {
+
+    struct counter_tensor {
+        constexpr auto operator()(TensorView &tensor) -> std::size_t & {
+            return tensor._M_ref_count;
+        }
+    };
+
+    struct default_tensor {
+        constexpr operator TensorView() {
+            return TensorView {
+                StorageView { StorageView::DummyTag{} },
+                {},
+                {},
+                {},
+                {},
+            };
+        }
+    };
+
+    using TensorBase = shared_ptr <
+        TensorView,
+        std::default_delete<TensorView>,
+        counter_tensor,
+        default_tensor
+    >;
+
+} // namespace detail
+
+struct Tensor : private detail::TensorBase {
+private:
+    using Base_t = detail::TensorBase;
+    using Deleter = std::function<void(std::byte *)>;
+
+public:
+    explicit Tensor(
+        const StorageView &storage,
+        IntArray array,
+        IntArray stride,
+        Device device,
+        DataType data_type)
+        : Base_t(unsafe_make(
+            new TensorView(
+                storage,
+                std::move(array),
+                std::move(stride),
+                device,
+                data_type
+            )
+        )) {}
 };
 
 } // namespace dark

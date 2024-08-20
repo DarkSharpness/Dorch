@@ -6,7 +6,7 @@
 
 namespace dark {
 
-struct Storage_View;
+struct StorageView;
 
 namespace detail {
     struct counter_storage;
@@ -17,7 +17,7 @@ struct Storage {
 private:
     friend struct detail::counter_storage;
     friend struct detail::default_storage;
-    friend struct Storage_View;
+    friend struct StorageView;
 
     using _Deleter_t = std::function<void(std::byte*)>;
     using _Manage_t = std::unique_ptr<std::byte[], _Deleter_t>;
@@ -51,7 +51,7 @@ namespace detail {
         }
     };
 
-    using Storage_Base = shared_ptr <
+    using StorageBase = shared_ptr <
         Storage,
         std::default_delete<Storage>,
         counter_storage,
@@ -60,17 +60,19 @@ namespace detail {
 
 } // namespace detail
 
-struct Storage_View : private detail::Storage_Base {
+struct StorageView : private detail::StorageBase {
 private:
-    using Base_t = detail::Storage_Base;
+    using Base_t = detail::StorageBase;
     using Deleter_t = std::function<void(std::byte*)>;
 
 public:
-    explicit Storage_View(std::byte *data, std::size_t size, Deleter_t deleter)
-        : Base_t(Base_t::unsafe_make(new Storage(data, size, std::move(deleter)))) {}
+    struct DummyTag {};
 
-    Storage_View(const Storage_View &) = default;
-    auto operator=(const Storage_View &) -> Storage_View & = default;
+    explicit StorageView(DummyTag) :
+        Base_t(Base_t::unsafe_make(new Storage(Storage::DummyTag{}))) {}
+
+    explicit StorageView(std::byte *data, std::size_t size, Deleter_t deleter)
+        : Base_t(Base_t::unsafe_make(new Storage(data, size, std::move(deleter)))) {}
 
     auto data() const -> std::byte * {
         return (*this)->_M_data.get();
