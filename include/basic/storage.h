@@ -1,85 +1,75 @@
 #pragma once
-#include "basic/shared.h"
+#include "utility/shared.h"
 #include <cstddef>
 #include <functional>
 #include <memory>
 
 namespace dark {
 
-struct StorageView;
+struct Storage;
 
 namespace detail {
-    struct counter_storage;
-    struct default_storage;
-} // namespace detail
 
-struct Storage {
+struct StorageView {
 private:
-    friend struct detail::counter_storage;
-    friend struct detail::default_storage;
-    friend struct StorageView;
+    friend struct ::dark::Storage;
+    friend struct shared_counter;
 
-    using _Deleter_t = std::function<void(std::byte*)>;
-    using _Manage_t = std::unique_ptr<std::byte[], _Deleter_t>;
+    using _Deleter_t = std::function<void(void *)>;
+    using _Manage_t  = std::unique_ptr<void, _Deleter_t>;
 
-    explicit Storage(std::byte *data, std::size_t size, _Deleter_t deleter) :
-        _M_data(data, std::move(deleter)), _M_size(size), _M_ref_count(0) {}
+    explicit StorageView(void *data, _Deleter_t deleter) :
+        _M_ref_count(0),
+        _M_data(data, std::move(deleter)) {}
 
     struct DummyTag {};
 
-    explicit Storage(DummyTag) : _M_data(nullptr, [](void *){}), _M_size(0), _M_ref_count(0) {}
+    explicit StorageView() noexcept : _M_ref_count(1), _M_data(nullptr, [](void *) {}) {}
 
-    Storage(const Storage &) = delete;
-    auto operator=(const Storage &) = delete;
+    inline static auto _S_dummy() -> StorageView & {
+        // To suppress the unused variable warning.
+        static auto instance = StorageView{};
+        static_cast<void>(instance._M_ref_count);
+        return instance;
+    }
 
-    _Manage_t   _M_data;
-    std::size_t _M_size;
+    StorageView(const StorageView &)    = delete;
+    auto operator=(const StorageView &) = delete;
+
     std::size_t _M_ref_count;
+    const _Manage_t _M_data;
 };
 
-namespace detail {
-
-    struct counter_storage {
-        constexpr auto operator()(Storage &storage) -> std::size_t & {
-            return storage._M_ref_count;
-        }
-    };
-
-    struct default_storage {
-        constexpr operator Storage() {
-            return Storage { Storage::DummyTag{} };
-        }
-    };
-
-    using StorageBase = shared_ptr <
-        Storage,
-        std::default_delete<Storage>,
-        counter_storage,
-        default_storage
-    >;
+using StorageBase = shared_ptr<StorageView>;
 
 } // namespace detail
 
-struct StorageView : private detail::StorageBase {
+/**
+ * The manager type fore the inner storage.
+ */
+struct Storage : private detail::StorageBase {
 private:
-    using Base_t = detail::StorageBase;
-    using Deleter_t = std::function<void(std::byte*)>;
+    using Base_t    = detail::StorageBase;
+    using View_t    = detail::StorageView;
+    using Deleter_t = View_t::_Deleter_t;
 
 public:
-    struct DummyTag {};
+    explicit Storage() : Base_t(Base_t::from_ptr(&View_t::_S_dummy())), _M_data(), _M_size() {}
 
-    explicit StorageView(DummyTag) :
-        Base_t(Base_t::unsafe_make(new Storage(Storage::DummyTag{}))) {}
+    explicit Storage(void *data, std::size_t size, Deleter_t deleter) :
+        Base_t(Base_t::from_ptr(new View_t{data, std::move(deleter)})),
+        _M_data(data),
+        _M_size(size) {}
 
-    explicit StorageView(std::byte *data, std::size_t size, Deleter_t deleter)
-        : Base_t(Base_t::unsafe_make(new Storage(data, size, std::move(deleter)))) {}
+    Storage(const Storage &other)                     = default;
+    auto operator=(const Storage &other) -> Storage & = default;
 
-    auto data() const -> std::byte * {
-        return (*this)->_M_data.get();
-    }
-    auto size() const -> std::size_t {
-        return (*this)->_M_size;
-    }
+    auto data() const -> void * { return this->_M_data; }
+    auto size() const -> std::size_t { return this->_M_size; }
+
+private:
+    void *_M_data;
+    std::size_t _M_size;
 };
 
 } // namespace dark
